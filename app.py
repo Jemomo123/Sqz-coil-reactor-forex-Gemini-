@@ -1,6 +1,7 @@
 import os
 import time
 import pandas as pd
+import numpy as np
 import streamlit as st
 import yfinance as yf
 import requests as r
@@ -10,24 +11,33 @@ import requests as r
 # ==============================================================================
 st.set_page_config(
     page_title="JEREMIAH EDGE FOREX", 
-    layout="centered",  # Optimal for mobile rendering windows
+    layout="centered", 
     initial_sidebar_state="collapsed"
 )
 
-# Initialize session state cache to keep data alive during intermittent feed dropouts
-if 'DXY_CACHE' not in st.session_state:
-    st.session_state['DXY_CACHE'] = {
-        "15m": {"regime": "UNKNOWN", "character": "INITIALIZING FEED"},
-        "1h": {"regime": "UNKNOWN", "character": "INITIALIZING FEED"},
-        "4h": {"regime": "UNKNOWN", "character": "INITIALIZING FEED"}
+# Persistent Network Connection Pool
+@st.cache_resource
+def get_global_network_session():
+    """Establishes a single, reusable connection pool to prevent rate-limit blocks."""
+    session = r.Session()
+    session.headers.update({
+        'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/604.1'
+    })
+    return session
+
+GLOBAL_SESSION = get_global_network_session()
+
+# Initialize Advanced Cache Matrix with Expiry Safeguards
+if 'PRO_DXY_CACHE' not in st.session_state:
+    st.session_state['PRO_DXY_CACHE'] = {
+        "15m": {"regime": "UNKNOWN", "character": "INITIALIZING", "timestamp": 0.0},
+        "1h": {"regime": "UNKNOWN", "character": "INITIALIZING", "timestamp": 0.0},
+        "4h": {"regime": "UNKNOWN", "character": "INITIALIZING", "timestamp": 0.0}
     }
 
-# Target Constants
-# 🟩 FOREX OPTIMIZED: Using yfinance engine strings and a tighter pipeline threshold
 TIMEFRAMES = ["5m", "15m", "1h"]
-FOREX_THRESHOLD = 0.0003  # Calibrated for currency pips: <= 0.03%
+FOREX_THRESHOLD = 0.0003
 
-# 📋 THE RESTORED VERIFIED FOREX MIX (15 Pairs) - PRE-FORMATTED FOR YAHOO FEED
 WATCHLIST = [
     "EURUSD=X", "GBPUSD=X", "AUDUSD=X", "NZDUSD=X", "USDJPY=X",
     "USDCAD=X", "USDCHF=X", "EURGBP=X", "EURJPY=X", "GBPJPY=X",
@@ -35,31 +45,16 @@ WATCHLIST = [
 ]
 
 # ==============================================================================
-# DATA CALCULATION PIPELINE (HIGH-PRECISION MATH ENGINE)
+# DATA CALCULATION PIPELINE
 # ==============================================================================
 def calculate_sma(prices, period):
-    """Calculates pure mathematical Simple Moving Average."""
     return pd.Series(prices).rolling(window=period).mean().iloc[-1]
 
 def fetch_forex_candles(symbol, timeframe):
-    """
-    High-integrity historical bar engine utilizing the global Yahoo Finance feed.
-    Pulls precise close data arrays with custom browser sessions to prevent blocking.
-    """
-    yf_tf_map = {
-        "5m": "5m",
-        "15m": "15m",
-        "1h": "1h"
-    }
-    
+    yf_tf_map = {"5m": "5m", "15m": "15m", "1h": "1h"}
     interval = yf_tf_map.get(timeframe, "15m")
     try:
-        session = r.Session()
-        session.headers.update({
-            'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/604.1'
-        })
-        
-        ticker = yf.Ticker(symbol, session=session)
+        ticker = yf.Ticker(symbol, session=GLOBAL_SESSION)
         df = ticker.history(interval=interval, period="5d")
         if not df.empty and len(df) >= 200:
             return df['Close'].tolist()
@@ -68,26 +63,19 @@ def fetch_forex_candles(symbol, timeframe):
     return None
 
 def run_pure_compression_math(symbol, timeframe):
-    """
-    Core Part 1 Algorithm Engine.
-    Executes the ultimate rule: cond1 AND (cond2 OR cond3)
-    """
     closes = fetch_forex_candles(symbol, timeframe)
     if not closes or len(closes) < 200:
         return {"sqz": False, "type": "NONE"}
     
     live_price = closes[-1]
-    
     sma20 = calculate_sma(closes, 20)
     sma100 = calculate_sma(closes, 100)
     sma200 = calculate_sma(closes, 200)
     
-    # Calculate exact distance ratios rounded strictly to 5 decimal places for Forex pips
     price_to_sma20 = round(abs(live_price - sma20) / live_price, 5)
     sma20_to_sma100 = round(abs(sma20 - sma100) / sma20, 5)
     sma20_to_sma200 = round(abs(sma20 - sma200) / sma20, 5)
     
-    # Check conditions against the high-precision Forex wall
     cond1 = price_to_sma20 <= FOREX_THRESHOLD
     cond2 = sma20_to_sma100 <= FOREX_THRESHOLD
     cond3 = sma20_to_sma200 <= FOREX_THRESHOLD
@@ -100,142 +88,142 @@ def run_pure_compression_math(symbol, timeframe):
     return {"sqz": False, "type": "NONE"}
 
 # ==============================================================================
-# PART 2 INSTITUTIONAL DXY SYNTHETIC AND FALLBACK ENGINE
+# INSTITUTIONAL GEOMEAN SYNTHETIC DXY MATRIX
 # ==============================================================================
-def fetch_clean_pair_series(symbol, interval, period):
-    """Safely extracts historical series for building the synthetic geomean matrix."""
+def fetch_institutional_component(symbol, interval, period):
+    """Fetches clean time-series Series retaining Datetime index structures."""
     try:
-        session = r.Session()
-        session.headers.update({
-            'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/604.1'
-        })
-        ticker = yf.Ticker(symbol, session=session)
+        ticker = yf.Ticker(symbol, session=GLOBAL_SESSION)
         df = ticker.history(interval=interval, period=period)
-        if not df.empty and len(df) >= 20:
+        if not df.empty and len(df) > 0:
             return df['Close']
     except Exception:
         pass
     return None
 
-def build_synthetic_dxy_array(interval, period):
-    """
-    Assembles a flawless proxy of the US Dollar Index via geomean basket weights
-    derived straight from working underlying forex feeds.
-    """
-    eurusd = fetch_clean_pair_series("EURUSD=X", interval, period)
-    usdjpy = fetch_clean_pair_series("USDJPY=X", interval, period)
-    gbpusd = fetch_clean_pair_series("GBPUSD=X", interval, period)
-    usdcad = fetch_clean_pair_series("USDCAD=X", interval, period)
-    usdchf = fetch_clean_pair_series("USDCHF=X", interval, period)
+def calculate_pure_synthetic_dxy(interval, period):
+    """Executes true institutional geometric mean across all 6 basket pairs."""
+    pairs = {
+        "EURUSD": "EURUSD=X", "USDJPY": "USDJPY=X", "GBPUSD": "GBPUSD=X",
+        "USDCAD": "USDCAD=X", "USDSEK": "USDSEK=X", "USDCHF": "USDCHF=X"
+    }
     
-    if eurusd is None or usdjpy is None or gbpusd is None:
+    data = {}
+    for key, ticker_symbol in pairs.items():
+        series = fetch_institutional_component(ticker_symbol, interval, period)
+        if series is not None:
+            data[key] = series
+            
+    # Failover Safety: Check if core index drivers are missing
+    if "EURUSD" not in data or "USDJPY" not in data or "GBPUSD" not in data:
         return None
         
-    min_len = min(len(eurusd), len(usdjpy), len(gbpusd))
+    # Align matrix to a single shared unified timestamp tracking grid
+    df_matrix = pd.DataFrame(data)
+    # Forward-fill gaps to maintain active volatility instead of using broken hardcoded values
+    df_matrix = df_matrix.ffill().bfill()
     
-    usdcad_vals = usdcad.iloc[-min_len:] if usdcad is not None else pd.Series([1.37] * min_len)
-    usdchf_vals = usdchf.iloc[-min_len:] if usdchf is not None else pd.Series([0.89] * min_len)
-    
-    e = eurusd.iloc[-min_len:].values
-    j = usdjpy.iloc[-min_len:].values
-    g = gbpusd.iloc[-min_len:].values
-    c = usdcad_vals.values
-    f = usdchf_vals.values
-    
-    synthetic_closes = []
-    for i in range(min_len):
-        # High-accuracy geomean calibration loop
-        dxy_val = 50.14348 * (e[i]**-0.612) * (j[i]**0.136) * (g[i]**-0.119) * (c[i]**0.091) * (f[i]**0.042)
-        synthetic_closes.append(dxy_val)
-        
-    return synthetic_closes
+    # Mathematical execution of the official DXY geometric weighting
+    synthetic_series = (
+        50.14348112 *
+        (df_matrix["EURUSD"] ** -0.576) *
+        (df_matrix["USDJPY"] ** 0.136) *
+        (df_matrix["GBPUSD"] ** -0.119) *
+        (df_matrix["USDCAD"] ** 0.091) *
+        (df_matrix["USDSEK"] ** 0.042) *
+        (df_matrix["USDCHF"] ** 0.036)
+    )
+    return synthetic_series.dropna()
 
 def fetch_dxy_regime_data():
     """
-    Part 2 Law: Multi-Layer Fault-Tolerant Engine.
-    Tries Raw Yahoo -> Tries Synthetic Matrix -> Tries DX=F Futures Contract -> Reverts to Session Cache.
+    Executes Priority Redesign Hierarchy: 
+    1. Synthetic Calculations -> 2. Continuous Futures (DX=F) -> 3. Protected Cache Line
     """
-    timeframes_p2 = {"15m": "15m", "1h": "1h", "4h": "1h"}
-    results = {}
+    # Expanded lookback period ("14d") ensures the 4H resampler has enough bars for a true 20 SMA
+    config = {
+        "15m": {"interval": "15m", "period": "5d"},
+        "1h": {"interval": "1h", "period": "7d"},
+        "4h": {"interval": "1h", "period": "14d"} 
+    }
     
-    for tf_label, yf_interval in timeframes_p2.items():
-        closes = None
-        source_tag = "RAW"
-        period = "5d" if tf_label == "4h" else "2d"
+    results = {}
+    current_time_pulse = time.time()
+    
+    for tf_label, params in config.items():
+        dxy_series = None
+        source_label = "SYNTHETIC"
         
-        # --- LAYER 1: TRY RAW STANDARD TICKER ---
-        try:
-            session = r.Session()
-            session.headers.update({
-                'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/604.1'
-            })
-            ticker = yf.Ticker("DX-Y.NYB", session=session)
-            df = ticker.history(interval=yf_interval, period=period)
-            if not df.empty and len(df) >= 20:
-                closes = df['Close'].tolist()
-                source_tag = "YAHOO"
-        except Exception:
-            pass
+        # --- LAYER 1: PURE INSTITUTIONAL SYNTHETIC ---
+        series_calc = calculate_pure_synthetic_dxy(params["interval"], params["period"])
+        if series_calc is not None and len(series_calc) >= 25:
+            dxy_series = series_calc
             
-        # --- LAYER 2: DEPLOY SYNTHETIC CALCULATOR IF YAHOO FAILS ---
-        if closes is None:
-            synth_array = build_synthetic_dxy_array(yf_interval, period)
-            if synth_array and len(synth_array) >= 20:
-                closes = synth_array
-                source_tag = "SYNTHETIC"
-                
-        # --- LAYER 3: FALLBACK TO DX CONTINUOUS FUTURES ---
-        if closes is None:
+        # --- LAYER 2: FUTURES CONTINUOUS CONTRACT BACKUP ---
+        if dxy_series is None:
             try:
-                session = r.Session()
-                ticker = yf.Ticker("DX=F", session=session)
-                df = ticker.history(interval=yf_interval, period=period)
-                if not df.empty and len(df) >= 20:
-                    closes = df['Close'].tolist()
-                    source_tag = "DX FUTURES"
+                ticker = yf.Ticker("DX=F", session=GLOBAL_SESSION)
+                df_fut = ticker.history(interval=params["interval"], period=params["period"])
+                if not df_fut.empty and len(df_fut) >= 25:
+                    dxy_series = df_fut['Close']
+                    source_label = "DX FUTURES"
             except Exception:
                 pass
                 
-        # --- LAYER 4: FALLBACK TO LOCAL SESSION CACHE ---
-        if closes is None:
-            results[tf_label] = st.session_state['DXY_CACHE'][tf_label]
+        # --- LAYER 3: SYSTEM SESSION CACHE WITH TIME DECAY WATCHERS ---
+        if dxy_series is None:
+            old_cache = st.session_state['PRO_DXY_CACHE'][tf_label]
+            # Flag data as STALE if it has been stuck in cache memory for more than 45 minutes
+            if old_cache["timestamp"] > 0 and (current_time_pulse - old_cache["timestamp"]) > 2700:
+                results[tf_label] = {
+                    "regime": old_cache["regime"], 
+                    "character": f"{old_cache['character'].split(' (')[0]} (STALE MEMORY)"
+                }
+            else:
+                results[tf_label] = old_cache
             continue
             
-        # --- HANDLE 4H RESAMPLING STAGE ---
-        if tf_label == "4h" and source_tag != "YAHOO":
-            df_temp = pd.DataFrame(closes, columns=['Close'])
-            df_resampled = df_temp.resample('4h').last().dropna()
-            closes = df_resampled['Close'].tolist()
-            if len(closes) < 10:
-                results[tf_label] = st.session_state['DXY_CACHE'][tf_label]
-                continue
-
-        # --- CORE REGIME ENGINE MATH ---
-        current_price = closes[-1]
-        recent_window = closes[-20:]
+        # --- VALID MATHEMATICAL 4H CALENDAR-TIME RESAMPLING ---
+        if tf_label == "4h":
+            dxy_series = dxy_series.resample('4H').last().dropna()
+            
+        if len(dxy_series) < 20:
+            results[tf_label] = st.session_state['PRO_DXY_CACHE'][tf_label]
+            continue
+            
+        # --- HIGH-PRECISION REGIME CALCULATIONS ---
+        closes_list = dxy_series.tolist()
+        current_price = closes_list[-1]
+        recent_window = closes_list[-20:]
+        
         max_boundary = max(recent_window)
         min_boundary = min(recent_window)
         range_width = (max_boundary - min_boundary) / min_boundary
-        sma20 = pd.Series(closes).rolling(window=20).mean().iloc[-1]
+        
+        sma20 = dxy_series.rolling(window=20).mean().iloc[-1]
         
         if range_width <= 0.010:
             if abs(current_price - sma20) / sma20 <= 0.001:
                 state = "RANGING"
-                char = f"INTERNAL BOX ({source_tag})"
+                char = f"INTERNAL BOX ({source_label})"
             else:
                 state = "RANGING"
-                char = f"BOX ({source_tag})"
+                char = f"BOX ({source_label})"
         else:
             state = "TRENDING"
-            char = f"CLEAR ({source_tag})"
+            char = f"CLEAR ({source_label})"
             
-        results[tf_label] = {"regime": state, "character": char}
+        results[tf_label] = {
+            "regime": state, 
+            "character": char, 
+            "timestamp": current_time_pulse
+        }
+        st.session_state['PRO_DXY_CACHE'][tf_label] = results[tf_label]
         
-    st.session_state['DXY_CACHE'] = results
     return results
 
 # ==============================================================================
-# STREAMLIT USER INTERFACE VIEWPORT (RESTORED TO ORIGINAL SSoT LAYOUT)
+# STREAMLIT USER INTERFACE VIEWPORT
 # ==============================================================================
 
 st.markdown("## 🛰️ Centralized DXY Market Regime (SSoT Part 2)")

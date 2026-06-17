@@ -46,7 +46,6 @@ def fetch_forex_candles(symbol, timeframe):
     
     interval = yf_tf_map.get(timeframe, "15m")
     try:
-        # Create a protected mobile-identity session for the currency feed
         session = r.Session()
         session.headers.update({
             'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/604.1'
@@ -92,43 +91,65 @@ def run_pure_compression_math(symbol, timeframe):
         
     return {"sqz": False, "type": "NONE"}
 
+
+def fetch_dxy_from_stooq(tf_label):
+    """
+    🔒 CRITICAL FAILOVER MECHANISM: Bypasses Yahoo completely by sourcing 
+    the US Dollar Index via Stooq's public financial network.
+    """
+    # Stooq identifier for the US Dollar Index is USDX
+    url = f"https://stooq.com/q/d/l/?s=usdx&i={tf_label.lower()}"
+    try:
+        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
+        response = r.get(url, headers=headers, timeout=10)
+        if response.status_code == 200 and "Date" in response.text:
+            lines = response.text.strip().split('\n')
+            if len(lines) > 21:
+                # Parse the CSV data returned by Stooq
+                data = [line.split(',') for line in lines[1:]]
+                df = pd.DataFrame(data, columns=lines[0].split(','))
+                df['Close'] = pd.to_numeric(df['Close'], errors='coerce')
+                df = df.dropna()
+                return df['Close'].tolist()
+    except Exception:
+        pass
+    return None
+
+
 def fetch_dxy_regime_data():
     """
-    Part 2 Law: Connects live to Yahoo Finance for the US Dollar Index (DXY)
-    with custom browser identity structures to bypass cloud firewall blocks.
+    Part 2 Law: Connects live to Yahoo Finance for DXY. 
+    If a data-center ban or block is detected, it deploys the Stooq failover mechanism.
     """
     timeframes_p2 = {"15m": "15m", "1h": "1h", "4h": "1h"}
     results = {}
     
+    # Step 1: Attempt standard Yahoo Finance collection with headers
     try:
-        # Create a persistent session with clean mobile browser identity headers
         session = r.Session()
         session.headers.update({
             'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/604.1'
         })
-        
-        # Attach the protected session directly to the ticker engine
         ticker = yf.Ticker("DX-Y.NYB", session=session)
         
+        yahoo_failed = False
         for tf_label, yf_interval in timeframes_p2.items():
             period = "5d" if tf_label == "4h" else "2d"
             df = ticker.history(interval=yf_interval, period=period)
             
-            if df.empty or len(df) < 50:
-                results[tf_label] = {"regime": "UNKNOWN", "character": "FEED CLOSURE"}
-                continue
+            if df.empty or len(df) < 20:
+                yahoo_failed = True
+                break
                 
             if tf_label == "4h":
                 df = df.resample('4h').agg({'Open': 'first', 'High': 'max', 'Low': 'min', 'Close': 'last'}).dropna()
                 
             closes = df['Close'].tolist()
             current_price = closes[-1]
-            
             recent_window = closes[-20:]
             max_boundary = max(recent_window)
             min_boundary = min(recent_window)
             range_width = (max_boundary - min_boundary) / min_boundary
-            
             sma20 = pd.Series(closes).rolling(window=20).mean().iloc[-1]
             
             if range_width <= 0.010:
@@ -138,9 +159,37 @@ def fetch_dxy_regime_data():
                     results[tf_label] = {"regime": "RANGING", "character": "BOX"}
             else:
                 results[tf_label] = {"regime": "TRENDING", "character": "CLEAR"}
+                
+        if not yahoo_failed and len(results) == 3:
+            return results
+            
     except Exception:
-        for tf in ["15m", "1h", "4h"]:
-            results[tf] = {"regime": "UNKNOWN", "character": "CONNECTION ERROR"}
+        pass
+
+    # Step 2: FAILOVER TRIGGERED — Sourcing from Stooq Infrastructure
+    for tf_label in ["15m", "1h", "4h"]:
+        # Map parameters to Stooq data files
+        stooq_tf = "d" if tf_label == "4h" else tf_label
+        closes = fetch_dxy_from_stooq(stooq_tf)
+        
+        if closes and len(closes) >= 20:
+            current_price = closes[-1]
+            recent_window = closes[-20:]
+            max_boundary = max(recent_window)
+            min_boundary = min(recent_window)
+            range_width = (max_boundary - min_boundary) / min_boundary
+            sma20 = pd.Series(closes).rolling(window=20).mean().iloc[-1]
+            
+            source_tag = " (FAILOVER)"
+            if range_width <= 0.010:
+                if abs(current_price - sma20) / sma20 <= 0.001:
+                    results[tf_label] = {"regime": "RANGING", "character": f"INTERNAL BOX{source_tag}"}
+                else:
+                    results[tf_label] = {"regime": "RANGING", "character": f"BOX{source_tag}"}
+            else:
+                results[tf_label] = {"regime": "TRENDING", "character": f"CLEAR{source_tag}"}
+        else:
+            results[tf_label] = {"regime": "OFFLINE", "character": "DATA WALL"}
             
     return results
 
@@ -173,7 +222,6 @@ progress_text = st.empty()
 scan_results = {}
 
 for idx, asset in enumerate(WATCHLIST, 1):
-    # Format cleaner visual display for mobile screens (e.g. EURUSD=X -> EURUSD)
     clean_name = asset.replace("=X", "")
     progress_text.markdown(f"⏳ *Scanning Forex Asset {idx}/15:*\n### {clean_name}")
     
@@ -215,3 +263,4 @@ else:
         st.warning(f"🟦 **SPECIAL ONE COMPRESSION ACTIVE:** {', '.join(special_one_alerts)}")
 
 st.caption(f"Live Forex workspace check timestamp: {time.strftime('%Y-%m-%d %H:%M:%S UTC')}")
+                

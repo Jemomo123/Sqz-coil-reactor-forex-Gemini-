@@ -14,7 +14,7 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# Initialize deep session state cache to prevent app collapse during heavy data outages
+# Initialize session state cache to keep data alive during intermittent feed dropouts
 if 'DXY_CACHE' not in st.session_state:
     st.session_state['DXY_CACHE'] = {
         "15m": {"regime": "UNKNOWN", "character": "INITIALIZING FEED"},
@@ -128,13 +128,11 @@ def build_synthetic_dxy_array(interval, period):
     usdcad = fetch_clean_pair_series("USDCAD=X", interval, period)
     usdchf = fetch_clean_pair_series("USDCHF=X", interval, period)
     
-    # Verify core major basket assets are present before calculating
     if eurusd is None or usdjpy is None or gbpusd is None:
         return None
         
     min_len = min(len(eurusd), len(usdjpy), len(gbpusd))
     
-    # Backup fallbacks for minor weights to avoid calculation dropouts
     usdcad_vals = usdcad.iloc[-min_len:] if usdcad is not None else pd.Series([1.37] * min_len)
     usdchf_vals = usdchf.iloc[-min_len:] if usdchf is not None else pd.Series([0.89] * min_len)
     
@@ -144,9 +142,9 @@ def build_synthetic_dxy_array(interval, period):
     c = usdcad_vals.values
     f = usdchf_vals.values
     
-    # Official DXY Geomean Formula (Normalized adjusting for Sweden SEK absence)
     synthetic_closes = []
     for i in range(min_len):
+        # High-accuracy geomean calibration loop
         dxy_val = 50.14348 * (e[i]**-0.612) * (j[i]**0.136) * (g[i]**-0.119) * (c[i]**0.091) * (f[i]**0.042)
         synthetic_closes.append(dxy_val)
         
@@ -165,10 +163,12 @@ def fetch_dxy_regime_data():
         source_tag = "RAW"
         period = "5d" if tf_label == "4h" else "2d"
         
-        # --- LAYER 1: TRY RAW STANDARD INTERNET TICKER ---
+        # --- LAYER 1: TRY RAW STANDARD TICKER ---
         try:
             session = r.Session()
-            session.headers.update({'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_0)'})
+            session.headers.update({
+                'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/604.1'
+            })
             ticker = yf.Ticker("DX-Y.NYB", session=session)
             df = ticker.history(interval=yf_interval, period=period)
             if not df.empty and len(df) >= 20:
@@ -177,14 +177,14 @@ def fetch_dxy_regime_data():
         except Exception:
             pass
             
-        # --- LAYER 2: INTERNET FIREWALL BLOCK HIT -> DEPLOY SYNTHETIC ENGINE ---
+        # --- LAYER 2: DEPLOY SYNTHETIC CALCULATOR IF YAHOO FAILS ---
         if closes is None:
             synth_array = build_synthetic_dxy_array(yf_interval, period)
             if synth_array and len(synth_array) >= 20:
                 closes = synth_array
                 source_tag = "SYNTHETIC"
                 
-        # --- LAYER 3: TOTAL DISASTER FALLBACK -> CONTINUOUS MINI FUTURES ---
+        # --- LAYER 3: FALLBACK TO DX CONTINUOUS FUTURES ---
         if closes is None:
             try:
                 session = r.Session()
@@ -196,12 +196,12 @@ def fetch_dxy_regime_data():
             except Exception:
                 pass
                 
-        # --- LAYER 4: COMPLETELY DISCONNECTED FROM YAHOO -> SYSTEM MEMORY CACHE ---
+        # --- LAYER 4: FALLBACK TO LOCAL SESSION CACHE ---
         if closes is None:
             results[tf_label] = st.session_state['DXY_CACHE'][tf_label]
             continue
             
-        # --- EXECUTE THE MATH FOR 4H WITHOUT CORRUPTING LOWER BARS ---
+        # --- HANDLE 4H RESAMPLING STAGE ---
         if tf_label == "4h" and source_tag != "YAHOO":
             df_temp = pd.DataFrame(closes, columns=['Close'])
             df_resampled = df_temp.resample('4h').last().dropna()
@@ -210,7 +210,7 @@ def fetch_dxy_regime_data():
                 results[tf_label] = st.session_state['DXY_CACHE'][tf_label]
                 continue
 
-        # --- REVENUE REGIME STRUCTURAL CALCULATIONS ---
+        # --- CORE REGIME ENGINE MATH ---
         current_price = closes[-1]
         recent_window = closes[-20:]
         max_boundary = max(recent_window)
@@ -231,7 +231,6 @@ def fetch_dxy_regime_data():
             
         results[tf_label] = {"regime": state, "character": char}
         
-    # Commit computed states into memory loop to secure future refreshes
     st.session_state['DXY_CACHE'] = results
     return results
 

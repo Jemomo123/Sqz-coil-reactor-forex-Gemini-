@@ -3,6 +3,7 @@ import time
 import pandas as pd
 import streamlit as st
 import yfinance as yf
+import requests as r
 
 # ==============================================================================
 # 🏛️ JEREMIAH EDGE ARCHITECTURE LAW: CONFIGURATION & MOBILE WORKSPACE SETTINGS
@@ -35,9 +36,8 @@ def calculate_sma(prices, period):
 def fetch_forex_candles(symbol, timeframe):
     """
     High-integrity historical bar engine utilizing the global Yahoo Finance feed.
-    Pulls precise close data arrays for currency structures.
+    Pulls precise close data arrays with custom browser sessions to prevent blocking.
     """
-    # Mapping standardized timeframe parameters to native yfinance intervals
     yf_tf_map = {
         "5m": "5m",
         "15m": "15m",
@@ -46,7 +46,13 @@ def fetch_forex_candles(symbol, timeframe):
     
     interval = yf_tf_map.get(timeframe, "15m")
     try:
-        ticker = yf.Ticker(symbol)
+        # Create a protected mobile-identity session for the currency feed
+        session = r.Session()
+        session.headers.update({
+            'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/604.1'
+        })
+        
+        ticker = yf.Ticker(symbol, session=session)
         df = ticker.history(interval=interval, period="5d")
         if not df.empty and len(df) >= 200:
             return df['Close'].tolist()
@@ -89,13 +95,21 @@ def run_pure_compression_math(symbol, timeframe):
 def fetch_dxy_regime_data():
     """
     Part 2 Law: Connects live to Yahoo Finance for the US Dollar Index (DXY)
-    and calculates structural regimes dynamically for 15m, 1h, and 4h parameters.
+    with custom browser identity structures to bypass cloud firewall blocks.
     """
     timeframes_p2 = {"15m": "15m", "1h": "1h", "4h": "1h"}
     results = {}
     
     try:
-        ticker = yf.Ticker("DX-Y.NYB")
+        # Create a persistent session with clean mobile browser identity headers
+        session = r.Session()
+        session.headers.update({
+            'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/604.1'
+        })
+        
+        # Attach the protected session directly to the ticker engine
+        ticker = yf.Ticker("DX-Y.NYB", session=session)
+        
         for tf_label, yf_interval in timeframes_p2.items():
             period = "5d" if tf_label == "4h" else "2d"
             df = ticker.history(interval=yf_interval, period=period)
